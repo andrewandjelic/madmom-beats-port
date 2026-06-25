@@ -93,3 +93,10 @@ Cancellation:
 
 - No explicit cancellation API yet.
 - Run analysis in a Web Worker and terminate/replace the worker for cancellation.
+
+## Licensing / redistribution
+
+When you distribute the generated `pkg/` (the `.wasm` + JS glue), include the
+repo's top-level `NOTICE`. The core is a port of madmom (BSD 2-Clause), and any
+bundled `models/` are CC BY-NC-SA 4.0 (**non-commercial only**). See `LICENSE`
+and `NOTICE`.

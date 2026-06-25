@@ -103,8 +103,15 @@ Goldens are written locally under `fixtures/golden/<fixture_name>/` as:
 
 ## Licensing
 
-- Code in this repo is permissively licensed (MIT OR Apache-2.0).
-- Model assets under `models/` are **CC BY-NC-SA 4.0** (see `LICENSES/MODELS_CC_BY_NC_SA.txt`).
+- This project's own code is permissively licensed **MIT OR Apache-2.0**
+  (see `LICENSE`, `LICENSE-MIT`, `LICENSE-APACHE`).
+- The Rust core is a **port / derivative of madmom (BSD 2-Clause)**. The upstream
+  copyright notice is reproduced in `NOTICE`, which must ship with any source or
+  binary redistribution (`.so`/`.a`/`.dylib`/`.wasm`).
+- Model assets under `models/` are **CC BY-NC-SA 4.0** (see `LICENSES/MODELS_CC_BY_NC_SA.txt`)
+  — **non-commercial only**. While these models are bundled, the combined binary
+  **cannot** be used in a commercial product. For commercial use, contact the
+  madmom_models authors (see `NOTICE`).
 - Fixture audio is not tracked in git; keep local provenance if needed.
 - Third-party notices are in `LICENSES/THIRD_PARTY.md`.
 - Provenance of committed artifacts is in `PROVENANCE.md`.

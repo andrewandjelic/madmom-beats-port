@@ -3,8 +3,14 @@
 ## madmom
 
 - Project: https://github.com/CPJKU/madmom
-- License: MIT (see `tools/regen/reference/madmom/LICENSE`)
-- Usage: referenced only for regeneration of models and goldens (archived under `tools/regen/`).
+- License: BSD 2-Clause License — Copyright (c) 2012-2014 Department of
+  Computational Perception, JKU Linz / OFAI Vienna (see
+  `tools/regen/reference/madmom/LICENSE`; full notice reproduced in `NOTICE`).
+- Usage: the runtime Rust core (`rust/madmom_beats_port_core/src/`, notably
+  `features.rs`, `dbn.rs`, `model.rs`) is a port / derivative work of madmom.
+  BSD 2-Clause attribution therefore applies to redistributed source **and**
+  binaries (`.so`/`.a`/`.dylib`/`.wasm`). The submodule under `tools/regen/` is
+  additionally used for regeneration of models and goldens.
 
 ## madmom_models
 
