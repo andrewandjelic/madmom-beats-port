@@ -1,6 +1,16 @@
 # madmom_beats_port_wasm
 
-WASM wrapper around `madmom_beats_port_core` (built with `wasm-pack --target web`).
+WASM wrapper around `madmom_beats_port_core`.
+
+## Build
+
+```bash
+sh build_pkg.sh
+```
+
+This runs `wasm-pack build --target web`, copies `LICENSE` and `NOTICE` into
+the generated `pkg/` distribution, and includes them in the package file
+allowlist.
 
 ## Exported functions
 
@@ -96,7 +106,11 @@ Cancellation:
 
 ## Licensing / redistribution
 
-When you distribute the generated `pkg/` (the `.wasm` + JS glue), include the
-repo's top-level `NOTICE`. The core is a port of madmom (BSD 2-Clause), and any
-bundled `models/` are CC BY-NC-SA 4.0 (**non-commercial only**). See `LICENSE`
-and `NOTICE`.
+When you distribute the generated `pkg/` (the `.wasm` + JS glue), include
+`LICENSE` and `NOTICE`. The helper script above copies both files into `pkg/`.
+The source code is BSD 2-Clause and the core is a port of madmom, so binary
+redistributions must reproduce the upstream madmom copyright notice.
+
+If you distribute model files alongside `pkg/`, also include
+`LICENSES/MODELS_CC_BY_NC_SA.txt` from the repo root and mark that
+model-bearing distribution as CC BY-NC-SA 4.0 / non-commercial.

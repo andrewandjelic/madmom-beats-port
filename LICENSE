@@ -1,19 +1,43 @@
-This project's own source code is licensed under either of:
+madmom-beats-port license map
+=============================
 
-  - Apache License, Version 2.0 (see LICENSE-APACHE), or
-  - MIT license (see LICENSE-MIT)
+This repository is a composite distribution.
 
-at your option (SPDX: `MIT OR Apache-2.0`).
+Source code, scripts, docs, schemas, FFI bindings, and WASM wrappers written
+for this project are licensed under the BSD 2-Clause License:
 
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
-dual licensed as above, without any additional terms or conditions.
+Copyright (c) 2026 Creighton Linza
+All rights reserved.
 
-Third-party components carry their own terms — see NOTICE and
-LICENSES/THIRD_PARTY.md. In particular:
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
 
-  - The Rust core is a port / derivative of madmom (BSD 2-Clause); the upstream
-    copyright notice is reproduced in NOTICE.
-  - The model artifacts under models/ are CC BY-NC-SA 4.0 (NON-COMMERCIAL ONLY);
-    see LICENSES/MODELS_CC_BY_NC_SA.txt. A binary that bundles them is not free
-    for commercial use.
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+The Rust runtime is a port / derivative of madmom source code, which is also
+licensed under BSD 2-Clause. The upstream madmom copyright notice and license
+conditions are reproduced in NOTICE and must be retained in redistributed source
+and binary artifacts.
+
+Model/data artifacts under models/ are derived from madmom_models and remain
+under Creative Commons Attribution-NonCommercial-ShareAlike 4.0. See
+LICENSES/MODELS_CC_BY_NC_SA.txt. A checkout or distribution that includes those
+model files is free for non-commercial use only under the model terms.
+
+Third-party components and submodules retain their own license terms. See
+LICENSES/THIRD_PARTY.md and NOTICE.

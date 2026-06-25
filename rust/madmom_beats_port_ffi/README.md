@@ -198,7 +198,11 @@ Android build note:
 
 ## Licensing / redistribution
 
-When you ship the compiled artifact (`.so`/`.a`/`.dylib`), include the repo's
-top-level `NOTICE` alongside it. The core is a port of madmom (BSD 2-Clause,
-binary redistributions must reproduce the copyright notice), and any bundled
-`models/` are CC BY-NC-SA 4.0 (**non-commercial only**). See `LICENSE` and `NOTICE`.
+When you ship the compiled artifact (`.so`/`.a`/`.dylib`), include `LICENSE`
+and `NOTICE` alongside it. The source code is BSD 2-Clause and the core is a
+port of madmom, so binary redistributions must reproduce the upstream madmom
+copyright notice.
+
+If you distribute model files with the binary, also include
+`LICENSES/MODELS_CC_BY_NC_SA.txt` from the repo root and mark that
+model-bearing distribution as CC BY-NC-SA 4.0 / non-commercial.

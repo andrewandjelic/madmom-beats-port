@@ -4,16 +4,19 @@ Copyright (c) 2026 Creighton Linza
 This product includes software derived from madmom
 (https://github.com/CPJKU/madmom).
 
-The project's own source code is licensed under MIT OR Apache-2.0 (see
-LICENSE-MIT and LICENSE-APACHE). Portions of the Rust core
+This project's source code is licensed under BSD 2-Clause (see LICENSE and
+LICENSES/BSD_2_CLAUSE.txt). Portions of the Rust core
 (rust/madmom_beats_port_core/src/, in particular features.rs, dbn.rs and
-model.rs) are a port / derivative work of madmom and are additionally subject
-to the upstream BSD 2-Clause license reproduced below. This NOTICE must be
-distributed with any source or binary redistribution (e.g. .so / .a / .dylib /
-.wasm artifacts) per BSD 2-Clause and CC BY-NC-SA 4.0 attribution terms.
+model.rs) are a port / derivative work of madmom and retain the upstream BSD
+2-Clause notice reproduced below. This NOTICE must be distributed with source
+and binary redistributions (e.g. .so / .a / .dylib / .wasm artifacts).
+
+This repository also includes model artifacts under models/. Those files are
+licensed under CC BY-NC-SA 4.0, not BSD 2-Clause. A distribution that includes
+the model artifacts is free for non-commercial use only under the model terms.
 
 ================================================================================
-madmom — source code (BSD 2-Clause License)
+madmom - source code (BSD 2-Clause License)
 ================================================================================
 
 Copyright (c) 2012-2014 Department of Computational Perception,
@@ -42,7 +45,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ================================================================================
-Model artifacts — models/ (CC BY-NC-SA 4.0, NON-COMMERCIAL)
+Model artifacts - models/ (CC BY-NC-SA 4.0, NON-COMMERCIAL)
 ================================================================================
 
 The model artifacts under models/ (downbeats_blstm.json,
@@ -50,7 +53,8 @@ downbeats_blstm_weights.npz) are derived from madmom_models
 (https://github.com/CPJKU/madmom_models) and are distributed under the
 Creative Commons Attribution-NonCommercial-ShareAlike 4.0 license. They may
 NOT be used for commercial purposes. Any binary that bundles these model files
-inherits this non-commercial restriction. Full text: LICENSES/MODELS_CC_BY_NC_SA.txt.
+inherits this non-commercial restriction. License notice:
+LICENSES/MODELS_CC_BY_NC_SA.txt.
 
 If you want to include these model files (or a variation or modification
 thereof) or technology which utilises them in a commercial product, please

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]

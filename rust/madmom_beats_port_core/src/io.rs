@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+
 use crate::RhythmError;
 use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, Ix1, Ix2, IxDyn, OwnedRepr};
 use ndarray_npy::NpzReader;

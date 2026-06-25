@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+
 use madmom_beats_port_core::{analyze, CoreConfig};
 use serde::Deserialize;
 use std::path::PathBuf;
