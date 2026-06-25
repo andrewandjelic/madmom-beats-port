@@ -23,7 +23,9 @@ jobs:
       - name: Build wasm package
         run: |
           cd rust/madmom_beats_port_wasm
-          wasm-pack build --target web --release
+          sh build_pkg.sh --release
+          test -f pkg/LICENSE
+          test -f pkg/NOTICE
 
   ios:
     name: ios
