@@ -26,12 +26,16 @@ jobs:
         run: |
           cd rust/madmom_beats_port_wasm
           curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
-          wasm-pack build --target web
+          sh build_pkg.sh
       - name: Collect wasm artifacts
         run: |
           mkdir -p dist/madmom-beats-port-${VERSION}/wasm
           cp -R rust/madmom_beats_port_wasm/pkg/* dist/madmom-beats-port-${VERSION}/wasm/
           cp -R models dist/madmom-beats-port-${VERSION}/wasm/models
+          mkdir -p dist/madmom-beats-port-${VERSION}/wasm/LICENSES
+          cp LICENSE NOTICE dist/madmom-beats-port-${VERSION}/wasm/
+          cp LICENSES/BSD_2_CLAUSE.txt LICENSES/MODELS_CC_BY_NC_SA.txt LICENSES/THIRD_PARTY.md \
+            dist/madmom-beats-port-${VERSION}/wasm/LICENSES/
       - uses: actions/upload-artifact@v4
         with:
           name: wasm-madmom-beats-port-${{ env.VERSION }}
@@ -62,6 +66,10 @@ jobs:
           cp rust/target/x86_64-apple-ios/release/libmadmom_beats_port_ffi.a dist/madmom-beats-port-${VERSION}/ios/libmadmom_beats_port_ffi_x86_64.a
           cp rust/madmom_beats_port_ffi/include/madmom_beats_port.h dist/madmom-beats-port-${VERSION}/ios/
           cp -R models dist/madmom-beats-port-${VERSION}/ios/models
+          mkdir -p dist/madmom-beats-port-${VERSION}/ios/LICENSES
+          cp LICENSE NOTICE dist/madmom-beats-port-${VERSION}/ios/
+          cp LICENSES/BSD_2_CLAUSE.txt LICENSES/MODELS_CC_BY_NC_SA.txt LICENSES/THIRD_PARTY.md \
+            dist/madmom-beats-port-${VERSION}/ios/LICENSES/
       - uses: actions/upload-artifact@v4
         with:
           name: ios-madmom-beats-port-${{ env.VERSION }}
@@ -110,6 +118,10 @@ jobs:
         run: |
           cp rust/madmom_beats_port_ffi/include/madmom_beats_port.h dist/madmom-beats-port-${VERSION}/android/
           cp -R models dist/madmom-beats-port-${VERSION}/android/models
+          mkdir -p dist/madmom-beats-port-${VERSION}/android/LICENSES
+          cp LICENSE NOTICE dist/madmom-beats-port-${VERSION}/android/
+          cp LICENSES/BSD_2_CLAUSE.txt LICENSES/MODELS_CC_BY_NC_SA.txt LICENSES/THIRD_PARTY.md \
+            dist/madmom-beats-port-${VERSION}/android/LICENSES/
       - uses: actions/upload-artifact@v4
         with:
           name: android-madmom-beats-port-${{ env.VERSION }}
