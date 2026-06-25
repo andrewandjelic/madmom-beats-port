@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Ported from madmom (BSD 2-Clause, Copyright (c) 2012-2014 JKU / OFAI). See NOTICE.
+
 use crate::features::Features;
 use crate::types::{ActivationOutput, ProgressEvent, ProgressSink, ProgressStage};
 use crate::{CoreConfig, RhythmError};

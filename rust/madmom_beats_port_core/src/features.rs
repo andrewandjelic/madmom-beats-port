@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// Ported from madmom (BSD 2-Clause, Copyright (c) 2012-2014 JKU / OFAI). See NOTICE.
+
 use crate::{CoreConfig, ProgressEvent, ProgressSink, ProgressStage, RhythmError};
 use ndarray::{Array2, Axis};
 use rustfft::num_complex::Complex32;

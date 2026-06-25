@@ -21,10 +21,12 @@ cargo build -p madmom_beats_port_ffi
 
 ```bash
 cd rust/madmom_beats_port_wasm
-wasm-pack build --target web
+sh build_pkg.sh
 ```
 
-The WASM build outputs a distributable package under `rust/madmom_beats_port_wasm/pkg/`.
+The WASM build outputs a distributable package under
+`rust/madmom_beats_port_wasm/pkg/`, copies the required `LICENSE` and `NOTICE`
+files into that package, and includes them in the package file allowlist.
 
 ### iOS / Android
 
@@ -103,8 +105,16 @@ Goldens are written locally under `fixtures/golden/<fixture_name>/` as:
 
 ## Licensing
 
-- Code in this repo is permissively licensed (MIT OR Apache-2.0).
-- Model assets under `models/` are **CC BY-NC-SA 4.0** (see `LICENSES/MODELS_CC_BY_NC_SA.txt`).
+- This repository is a composite distribution. Project-owned source code,
+  scripts, docs, schemas, FFI bindings, and WASM wrappers are licensed
+  **BSD 2-Clause** (see `LICENSE` and `LICENSES/BSD_2_CLAUSE.txt`).
+- The Rust core is a **port / derivative of madmom**, also BSD 2-Clause. The
+  upstream copyright notice is reproduced in `NOTICE`, which must ship with any
+  source or binary redistribution (`.so`/`.a`/`.dylib`/`.wasm`).
+- Model assets under `models/` are **CC BY-NC-SA 4.0** (see
+  `LICENSES/MODELS_CC_BY_NC_SA.txt`) and are **non-commercial only**. A checkout
+  or distribution that includes these model files is free for non-commercial use
+  only. For commercial use, contact the madmom_models authors (see `NOTICE`).
 - Fixture audio is not tracked in git; keep local provenance if needed.
 - Third-party notices are in `LICENSES/THIRD_PARTY.md`.
 - Provenance of committed artifacts is in `PROVENANCE.md`.

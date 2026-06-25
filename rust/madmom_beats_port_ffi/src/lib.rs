@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause
+
 use madmom_beats_port_core::{
     analyze, analyze_with_progress, validate_core_config, CoreConfig, ProgressEvent, ProgressSink,
     RhythmError,

@@ -195,3 +195,14 @@ Android build note:
 
 - `rust/.cargo/config.toml` pins Android link args for `SONAME=libmadmom_beats_port_ffi.so`
   and `max-page-size=16384`.
+
+## Licensing / redistribution
+
+When you ship the compiled artifact (`.so`/`.a`/`.dylib`), include `LICENSE`
+and `NOTICE` alongside it. The source code is BSD 2-Clause and the core is a
+port of madmom, so binary redistributions must reproduce the upstream madmom
+copyright notice.
+
+If you distribute model files with the binary, also include
+`LICENSES/MODELS_CC_BY_NC_SA.txt` from the repo root and mark that
+model-bearing distribution as CC BY-NC-SA 4.0 / non-commercial.
