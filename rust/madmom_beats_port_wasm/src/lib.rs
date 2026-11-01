@@ -206,6 +206,28 @@ struct DecodedBeats {
     output: Option<AnalysisOutput>,
 }
 
+/// Splits outputs concatenated in network order into one array per network.
+fn split_network_outputs(
+    outputs: &[f32],
+    networks: usize,
+    columns: usize,
+) -> Result<Vec<Array2<f32>>, String> {
+    let values_per_frame = networks.saturating_mul(columns);
+    if values_per_frame == 0
+        || outputs.is_empty()
+        || !outputs.len().is_multiple_of(values_per_frame)
+    {
+        return Err("network outputs do not match the network and column counts".to_string());
+    }
+    let frames = outputs.len() / values_per_frame;
+    outputs
+        .chunks_exact(frames * columns)
+        .map(|chunk| {
+            Array2::from_shape_vec((frames, columns), chunk.to_vec()).map_err(|e| e.to_string())
+        })
+        .collect()
+}
+
 /// Decodes beats from the networks' outputs, concatenated in network order
 /// (each frames x `columns`).
 #[wasm_bindgen]
@@ -217,16 +239,7 @@ pub fn decode_beats(
     progress_cb: Option<Function>,
 ) -> Result<JsValue, JsValue> {
     let config = parse_config(config_json).map_err(as_js_error)?;
-    if networks == 0 || columns == 0 || !outputs.len().is_multiple_of(networks * columns) {
-        return Err(js_error(
-            "network outputs do not match the network and column counts",
-        ));
-    }
-    let frames = outputs.len() / (networks * columns);
-    let arrays = outputs
-        .chunks_exact(frames * columns)
-        .map(|chunk| Array2::from_shape_vec((frames, columns), chunk.to_vec()).map_err(js_error))
-        .collect::<Result<Vec<_>, _>>()?;
+    let arrays = split_network_outputs(outputs, networks, columns).map_err(js_error)?;
     let mut sink = progress_cb.map(|cb| JsProgressSink { cb });
     let decoded = decode_network_outputs(
         arrays,
@@ -247,10 +260,29 @@ pub fn decode_beats(
 
 #[cfg(test)]
 mod tests {
+    use super::split_network_outputs;
     use madmom_beats_port_core::{analyze_with_model_data, CoreConfig};
 
     const MODEL_JSON: &str = include_str!("../../../models/downbeats_blstm.json");
     const MODEL_WEIGHTS: &[u8] = include_bytes!("../../../models/downbeats_blstm_weights.npz");
+
+    #[test]
+    fn split_network_outputs_rejects_inputs_that_do_not_divide() {
+        assert!(split_network_outputs(&[], 8, 3).is_err());
+        assert!(split_network_outputs(&[0.0; 24], 0, 3).is_err());
+        assert!(split_network_outputs(&[0.0; 24], 8, 0).is_err());
+        assert!(split_network_outputs(&[0.0; 7], 8, 3).is_err());
+    }
+
+    #[test]
+    fn split_network_outputs_keeps_network_order() {
+        let outputs = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        let arrays = split_network_outputs(&outputs, 2, 2).unwrap();
+        assert_eq!(arrays.len(), 2);
+        assert_eq!(arrays[0].dim(), (2, 2));
+        assert_eq!(arrays[0][(1, 0)], 3.0);
+        assert_eq!(arrays[1][(0, 0)], 5.0);
+    }
 
     #[test]
     #[ignore = "long-running stability test"]
