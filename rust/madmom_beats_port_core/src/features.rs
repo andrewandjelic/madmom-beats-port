@@ -15,10 +15,52 @@ pub struct Features {
 struct ResolutionPlan {
     frame_size: usize,
     window: Vec<f32>,
-    filterbank: Array2<f32>,
+    /// Per band: the first bin and the weights up to its last non-zero bin.
+    /// The triangular filters cover a few bins each, so summing only these
+    /// skips almost all of the dense filterbank; the zeros it skips add
+    /// nothing, so the sums come out bit-identical.
+    band_weights: Vec<(usize, Vec<f32>)>,
     num_filters: usize,
     diff_frames: usize,
     column_offset: usize,
+}
+
+fn band_weights(filterbank: &Array2<f32>) -> Vec<(usize, Vec<f32>)> {
+    filterbank
+        .columns()
+        .into_iter()
+        .map(|column| {
+            let first = column.iter().position(|&w| w != 0.0);
+            let last = column.iter().rposition(|&w| w != 0.0);
+            match (first, last) {
+                (Some(first), Some(last)) => (first, column.slice(ndarray::s![first..=last]).to_vec()),
+                _ => (0, Vec::new()),
+            }
+        })
+        .collect()
+}
+
+/// Number of feature columns `compute_features` produces for this config.
+pub fn feature_dim(config: &CoreConfig) -> Result<usize, RhythmError> {
+    let feature_cfg = &config.feature;
+    let mut total_cols = 0usize;
+    for (&frame_size, &num_bands) in feature_cfg
+        .frame_sizes
+        .iter()
+        .zip(feature_cfg.num_bands.iter())
+    {
+        let bin_freqs = bin_frequencies(feature_cfg.sample_rate, frame_size, frame_size / 2);
+        let filterbank = build_log_filterbank(
+            &bin_freqs,
+            num_bands,
+            feature_cfg.fmin,
+            feature_cfg.fmax,
+            true,
+            true,
+        )?;
+        total_cols += filterbank.len_of(Axis(1)) * 2;
+    }
+    Ok(total_cols)
 }
 
 pub fn compute_features(
@@ -62,7 +104,7 @@ pub fn compute_features(
         plans.push(ResolutionPlan {
             frame_size,
             window,
-            filterbank,
+            band_weights: band_weights(&filterbank),
             num_filters,
             diff_frames,
             column_offset: total_cols,
@@ -135,10 +177,10 @@ fn fill_resolution_features(
             magnitude[bin] = fft_buffer[bin].norm();
         }
 
-        for (band, log_value) in log_row.iter_mut().enumerate().take(num_filters) {
+        for (log_value, (first, weights)) in log_row.iter_mut().zip(plan.band_weights.iter()) {
             let mut sum = 0.0f32;
-            for (bin, magnitude_value) in magnitude.iter().enumerate().take(num_bins) {
-                sum += *magnitude_value * plan.filterbank[(bin, band)];
+            for (magnitude_value, weight) in magnitude[*first..].iter().zip(weights.iter()) {
+                sum += *magnitude_value * *weight;
             }
             *log_value = (sum + 1.0).log10();
         }

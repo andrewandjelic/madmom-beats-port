@@ -14,6 +14,21 @@ pub fn decode(
     config: &CoreConfig,
     progress: &mut dyn ProgressSink,
 ) -> Result<Vec<BeatEvent>, RhythmError> {
+    decode_scored(activations, config, progress)?
+        .map(|(beats, _)| beats)
+        .ok_or_else(|| RhythmError::Model("no HMM".to_string()))
+}
+
+/// Like `decode`, also returning the winning bar model's log probability, or
+/// `None` where `decode` fails with "no HMM" (no bar length gave the
+/// activations a finite probability). Decoding each of `beats_per_bar` on its
+/// own and keeping the first highest score (as `decode` does) gives exactly
+/// `decode`'s result, so the bar lengths can be decoded in parallel.
+pub fn decode_scored(
+    activations: &ActivationOutput,
+    config: &CoreConfig,
+    progress: &mut dyn ProgressSink,
+) -> Result<Option<(Vec<BeatEvent>, f64)>, RhythmError> {
     progress.on_progress(ProgressEvent {
         stage: ProgressStage::Dbn,
         progress: 0.0,
@@ -39,7 +54,7 @@ pub fn decode(
             stage: ProgressStage::Dbn,
             progress: 1.0,
         });
-        return Ok(Vec::new());
+        return Ok(Some((Vec::new(), f64::NEG_INFINITY)));
     }
 
     let hmms = build_hmms(config)?;
@@ -62,7 +77,9 @@ pub fn decode(
         }
     }
 
-    let hmm = best_hmm.ok_or_else(|| RhythmError::Model("no HMM".to_string()))?;
+    let Some(hmm) = best_hmm else {
+        return Ok(None);
+    };
     let st = &hmm.transition_model.state_space;
     let om = &hmm.observation_model;
 
@@ -113,7 +130,7 @@ pub fn decode(
         progress: 1.0,
     });
 
-    Ok(beats)
+    Ok(Some((beats, best_logp)))
 }
 
 fn threshold_activations(data: &[[f32; 2]], threshold: f32) -> (Vec<[f32; 2]>, usize) {
@@ -515,7 +532,141 @@ impl HiddenMarkovModel {
         num_frames.saturating_mul(num_states).saturating_mul(2)
     }
 
+    /// Viterbi decoding in a single forward pass.
+    ///
+    /// Most states have exactly one way in (the previous position within the
+    /// beat); only a beat's first states, where the tempo may change, have
+    /// several. So the pass only records which way in won for those few
+    /// states, a few hundred per frame, instead of a backpointer for every
+    /// state. The previous version kept full backpointers for one block at a
+    /// time and so ran every frame twice. Scores, tie-breaking (the first best
+    /// way in wins) and the decoded path are identical to it; see
+    /// `viterbi_reference` and the tests.
     fn viterbi(
+        &self,
+        observations: &[[f32; 2]],
+        progress: &mut DbnProgressTracker<'_>,
+    ) -> Result<(Vec<usize>, f64), RhythmError> {
+        let tm = &self.transition_model;
+        let num_states = tm.pointers.len() - 1;
+        let num_frames = observations.len();
+        if num_frames == 0 {
+            return Ok((Vec::new(), f64::NEG_INFINITY));
+        }
+        let log_densities = self.observation_model.log_densities(observations);
+        let density_index = &self.observation_model.pointers;
+
+        let incoming = |state: usize| tm.pointers[state]..tm.pointers[state + 1];
+        let branching: Vec<usize> = (0..num_states).filter(|&s| incoming(s).len() > 1).collect();
+        let mut slot = vec![usize::MAX; num_states];
+        for (i, &state) in branching.iter().enumerate() {
+            slot[state] = i;
+            if incoming(state).len() > u16::MAX as usize + 1 {
+                return Err(RhythmError::Model("too many transitions into one state".to_string()));
+            }
+        }
+        let mut choices = allocate_choices(branching.len(), num_frames)?;
+
+        // Each state's score depends only on the previous frame's, so the
+        // states can be visited in any order: the one-way states first, as a
+        // flat loop, then the branching ones.
+        let mut one_way = Vec::new();
+        let mut dead_ends = Vec::new();
+        for state in 0..num_states {
+            match incoming(state).len() {
+                0 => dead_ends.push(state),
+                1 => {
+                    let idx = tm.pointers[state];
+                    one_way.push(OneWay {
+                        state,
+                        prev: tm.states[idx],
+                        log_probability: tm.log_probabilities[idx],
+                        density: density_index[state],
+                    });
+                }
+                _ => {}
+            }
+        }
+        let branching_density: Vec<usize> = branching.iter().map(|&s| density_index[s]).collect();
+
+        let mut previous: Vec<f64> = self.initial_distribution.iter().map(|v| v.ln()).collect();
+        let mut current = vec![f64::NEG_INFINITY; num_states];
+        for (frame, dens) in log_densities.iter().enumerate() {
+            let row = &mut choices[frame * branching.len()..(frame + 1) * branching.len()];
+            for way in &one_way {
+                let score = previous[way.prev] + way.log_probability + dens[way.density];
+                // As in the general loop below: a NaN score loses to -inf.
+                current[way.state] = if score > f64::NEG_INFINITY {
+                    score
+                } else {
+                    f64::NEG_INFINITY
+                };
+            }
+            for &state in &dead_ends {
+                current[state] = f64::NEG_INFINITY;
+            }
+            for (b, &state) in branching.iter().enumerate() {
+                let density = dens[branching_density[b]];
+                let start = tm.pointers[state];
+                let end = tm.pointers[state + 1];
+                let mut best = f64::NEG_INFINITY;
+                let mut best_idx = start;
+                for (offset, (&prev, &log_probability)) in tm.states[start..end]
+                    .iter()
+                    .zip(&tm.log_probabilities[start..end])
+                    .enumerate()
+                {
+                    let score = previous[prev] + log_probability + density;
+                    if score > best {
+                        best = score;
+                        best_idx = start + offset;
+                    }
+                }
+                current[state] = best;
+                row[b] = (best_idx - start) as u16;
+            }
+            std::mem::swap(&mut previous, &mut current);
+            if (frame + 1) % VITERBI_BLOCK_FRAMES == 0 || frame + 1 == num_frames {
+                let done = (frame % VITERBI_BLOCK_FRAMES) + 1;
+                progress.advance(done.saturating_mul(num_states).saturating_mul(2));
+            }
+        }
+
+        let mut best_state = 0usize;
+        let mut best_log = f64::NEG_INFINITY;
+        for (i, v) in previous.iter().enumerate() {
+            if *v > best_log {
+                best_log = *v;
+                best_state = i;
+            }
+        }
+        if best_log.is_infinite() && best_log.is_sign_negative() {
+            return Ok((Vec::new(), best_log));
+        }
+
+        // Every state on the best path scored finite, so a one-way state's
+        // predecessor is simply its only way in.
+        let mut path = vec![0usize; num_frames];
+        let mut state = best_state;
+        for frame in (0..num_frames).rev() {
+            path[frame] = state;
+            if frame == 0 {
+                break;
+            }
+            let range = incoming(state);
+            state = if slot[state] != usize::MAX {
+                tm.states[range.start + choices[frame * branching.len() + slot[state]] as usize]
+            } else if range.len() == 1 {
+                tm.states[range.start]
+            } else {
+                0
+            };
+        }
+        Ok((path, best_log))
+    }
+
+    #[cfg(test)]
+    fn viterbi_reference(
         &self,
         observations: &[[f32; 2]],
         progress: &mut DbnProgressTracker<'_>,
@@ -591,6 +742,7 @@ impl HiddenMarkovModel {
         Ok((path, best_log))
     }
 
+    #[cfg(test)]
     fn run_viterbi_frame(
         &self,
         previous: &[f64],
@@ -668,6 +820,32 @@ impl<'a> DbnProgressTracker<'a> {
     }
 }
 
+/// A state with a single way in, from `prev`.
+struct OneWay {
+    state: usize,
+    prev: usize,
+    log_probability: f64,
+    density: usize,
+}
+
+fn allocate_choices(branching_states: usize, num_frames: usize) -> Result<Vec<u16>, RhythmError> {
+    let entries = branching_states.checked_mul(num_frames).ok_or_else(|| {
+        RhythmError::Model("decode choice allocation size overflowed".to_string())
+    })?;
+    let mut choices = Vec::<u16>::new();
+    if choices.try_reserve_exact(entries).is_err() {
+        return Err(RhythmError::Model(format!(
+            "decode choice allocation exceeded memory (states={}, frames={}, bytes={})",
+            branching_states,
+            num_frames,
+            entries.saturating_mul(size_of::<u16>())
+        )));
+    }
+    choices.resize(entries, 0u16);
+    Ok(choices)
+}
+
+#[cfg(test)]
 fn allocate_backpointers(num_states: usize, num_frames: usize) -> Result<Vec<u32>, RhythmError> {
     if num_states > u32::MAX as usize {
         return Err(RhythmError::Model(format!(
@@ -797,9 +975,88 @@ fn logspace_intervals(min_interval: f32, max_interval: f32, count: usize) -> Vec
 
 #[cfg(test)]
 mod tests {
-    use super::decode;
+    use super::{build_hmms, decode, decode_scored, DbnProgressTracker};
     use crate::types::{ActivationOutput, ProgressEvent, ProgressSink, ProgressStage};
     use crate::CoreConfig;
+
+    /// Beat-like activations with jittered tempo, dropouts and noise.
+    fn synthetic_activations(frames: usize, seed: u64) -> ActivationOutput {
+        let mut rng = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let mut next = move || {
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((rng >> 33) as f32) / ((1u64 << 31) as f32)
+        };
+        let mut beat = vec![0.0f32; frames];
+        let mut downbeat = vec![0.0f32; frames];
+        let mut t = 10.0f32;
+        let mut count = 0;
+        while (t as usize) < frames {
+            let idx = t as usize;
+            if next() > 0.1 {
+                if count % 4 == 0 {
+                    downbeat[idx] = 0.3 + 0.5 * next();
+                } else {
+                    beat[idx] = 0.3 + 0.5 * next();
+                }
+            }
+            count += 1;
+            t += 45.0 + 8.0 * next();
+        }
+        for i in 0..frames {
+            beat[i] = (beat[i] + 0.02 * next()).min(0.95);
+            downbeat[i] = (downbeat[i] + 0.01 * next()).min(0.95 - beat[i]);
+        }
+        ActivationOutput { beat, downbeat }
+    }
+
+    #[test]
+    fn single_pass_viterbi_matches_two_pass_reference() {
+        let config = CoreConfig::default();
+        let mut sink = |_event: ProgressEvent| {};
+        for hmm in build_hmms(&config).unwrap() {
+            for seed in 0..3 {
+                let act = synthetic_activations(2_000, seed);
+                let obs: Vec<[f32; 2]> = act
+                    .beat
+                    .iter()
+                    .zip(act.downbeat.iter())
+                    .map(|(b, d)| [*b, *d])
+                    .collect();
+                let mut tracker = DbnProgressTracker::new(&mut sink, usize::MAX);
+                let (path, logp) = hmm.viterbi(&obs, &mut tracker).unwrap();
+                let (ref_path, ref_logp) = hmm.viterbi_reference(&obs, &mut tracker).unwrap();
+                assert_eq!(path, ref_path, "path differs (seed {seed})");
+                assert_eq!(logp.to_bits(), ref_logp.to_bits(), "log probability differs");
+            }
+        }
+    }
+
+    #[test]
+    fn decoding_bar_lengths_separately_matches_decode() {
+        let config = CoreConfig::default();
+        let mut sink = |_event: ProgressEvent| {};
+        for seed in 0..3 {
+            let act = synthetic_activations(2_000, seed);
+            let full = decode(&act, &config, &mut sink).unwrap();
+            let mut best = None;
+            for &beats in &config.dbn.beats_per_bar {
+                let mut single = config.clone();
+                single.dbn.beats_per_bar = vec![beats];
+                if let Some((events, logp)) = decode_scored(&act, &single, &mut sink).unwrap() {
+                    if best.as_ref().map_or(true, |(_, best_logp)| logp > *best_logp) {
+                        best = Some((events, logp));
+                    }
+                }
+            }
+            let (events, _) = best.expect("a bar length should decode");
+            assert_eq!(events.len(), full.len());
+            for (a, b) in events.iter().zip(full.iter()) {
+                assert_eq!(a.time_sec.to_bits(), b.time_sec.to_bits());
+                assert_eq!(a.beat_in_bar, b.beat_in_bar);
+                assert_eq!(a.confidence.to_bits(), b.confidence.to_bits());
+            }
+        }
+    }
 
     struct Recorder {
         events: Vec<ProgressEvent>,
