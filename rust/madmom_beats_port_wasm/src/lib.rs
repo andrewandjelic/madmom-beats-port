@@ -179,7 +179,7 @@ impl BeatNetworks {
 
     /// Keeps the features (from `extract_features_json`) for `run`.
     pub fn set_features(&mut self, features: Vec<f32>, columns: usize) -> Result<(), JsValue> {
-        if columns == 0 || features.len() % columns != 0 {
+        if columns == 0 || !features.len().is_multiple_of(columns) {
             return Err(js_error("features do not divide into the column count"));
         }
         let frames = features.len() / columns;
@@ -217,7 +217,7 @@ pub fn decode_beats(
     progress_cb: Option<Function>,
 ) -> Result<JsValue, JsValue> {
     let config = parse_config(config_json).map_err(as_js_error)?;
-    if networks == 0 || columns == 0 || outputs.len() % (networks * columns) != 0 {
+    if networks == 0 || columns == 0 || !outputs.len().is_multiple_of(networks * columns) {
         return Err(js_error(
             "network outputs do not match the network and column counts",
         ));

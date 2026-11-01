@@ -574,7 +574,7 @@ impl HiddenMarkovModel {
         // flat loop, then the branching ones.
         let mut one_way = Vec::new();
         let mut dead_ends = Vec::new();
-        for state in 0..num_states {
+        for (state, &density) in density_index.iter().enumerate() {
             match incoming(state).len() {
                 0 => dead_ends.push(state),
                 1 => {
@@ -583,7 +583,7 @@ impl HiddenMarkovModel {
                         state,
                         prev: tm.states[idx],
                         log_probability: tm.log_probabilities[idx],
-                        density: density_index[state],
+                        density,
                     });
                 }
                 _ => {}
@@ -1088,10 +1088,7 @@ mod tests {
                 let mut single = config.clone();
                 single.dbn.beats_per_bar = vec![beats];
                 if let Some((events, logp)) = decode_scored(&act, &single, &mut sink).unwrap() {
-                    if best
-                        .as_ref()
-                        .map_or(true, |(_, best_logp)| logp > *best_logp)
-                    {
+                    if best.as_ref().is_none_or(|(_, best_logp)| logp > *best_logp) {
                         best = Some((events, logp));
                     }
                 }

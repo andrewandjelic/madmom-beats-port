@@ -464,7 +464,7 @@ fn lstm_frame(
     buffers.input_sums.fill(0.0);
     for (&x, weights) in x.iter().zip(input_weights.chunks_exact(width)) {
         for (sum, &w) in buffers.input_sums.iter_mut().zip(weights) {
-            *sum = *sum + w * x;
+            *sum += w * x;
         }
     }
     buffers.recurrent_sums.fill(0.0);
@@ -474,7 +474,7 @@ fn lstm_frame(
         .zip(recurrent_weights.chunks_exact(width))
     {
         for (sum, &w) in buffers.recurrent_sums.iter_mut().zip(weights) {
-            *sum = *sum + w * p;
+            *sum += w * p;
         }
     }
     let (input_sums, recurrent_sums, gate_out) = (
