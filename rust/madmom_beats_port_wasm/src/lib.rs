@@ -201,7 +201,7 @@ impl BeatNetworks {
 
 #[derive(Serialize)]
 struct DecodedBeats {
-    /// The winning bar model's log probability; null where no bar length fits.
+    /// The winning bar model's log probability; absent where no bar length fits.
     log_probability: Option<f64>,
     output: Option<AnalysisOutput>,
 }

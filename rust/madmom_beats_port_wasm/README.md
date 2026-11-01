@@ -124,7 +124,9 @@ steps are spread:
 - `decode_beats(outputs, networks, columns, configJson?, progressCb?)`: decodes
   the beats from all networks' outputs concatenated in network order. Returns
   `{ log_probability, output }`; `output` has the usual beat arrays, or both
-  are `null` where no bar length fits the track.
+  are `undefined` where no bar length fits the track. A track with no activity
+  above the threshold gives empty beat arrays and a `log_probability` of
+  `-Infinity`.
 
 Each bar length in `dbn.beats_per_bar` can also be decoded on its own worker:
 run `decode_beats` once per length with `beats_per_bar: [n]`, then keep the
@@ -150,6 +152,12 @@ const { output } = decode_beats(all, networkCount, outputColumns, config);
 
 The networks dominate the run time, so spreading them over a few workers
 gives most of the gain.
+
+Workers trade memory for that speed. Each one holds its own copy of the module
+and whatever it is given, and its WASM memory doesn't shrink until the worker
+is terminated. For a 3:40 track, a single `analyze_json_with_model` call peaks
+at about 115 MB of WASM memory, while 8 workers total about 560 MB, and 4 about
+280 MB. Use fewer workers where memory matters, and terminate them when done.
 
 ## Licensing / redistribution
 
