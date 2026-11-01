@@ -593,38 +593,19 @@ impl HiddenMarkovModel {
         let mut current = vec![f64::NEG_INFINITY; num_states];
         for (frame, dens) in log_densities.iter().enumerate() {
             let row = &mut choices[frame * branching.len()..(frame + 1) * branching.len()];
-            for way in &one_way {
-                let score = previous[way.prev] + way.log_probability + dens[way.density];
-                // As in the general loop below: a NaN score loses to -inf.
-                current[way.state] = if score > f64::NEG_INFINITY {
-                    score
-                } else {
-                    f64::NEG_INFINITY
-                };
-            }
-            for &state in &dead_ends {
-                current[state] = f64::NEG_INFINITY;
-            }
-            for (b, &state) in branching.iter().enumerate() {
-                let density = dens[branching_density[b]];
-                let start = tm.pointers[state];
-                let end = tm.pointers[state + 1];
-                let mut best = f64::NEG_INFINITY;
-                let mut best_idx = start;
-                for (offset, (&prev, &log_probability)) in tm.states[start..end]
-                    .iter()
-                    .zip(&tm.log_probabilities[start..end])
-                    .enumerate()
-                {
-                    let score = previous[prev] + log_probability + density;
-                    if score > best {
-                        best = score;
-                        best_idx = start + offset;
-                    }
-                }
-                current[state] = best;
-                row[b] = (best_idx - start) as u16;
-            }
+            viterbi_frame(
+                &FrameModel {
+                    one_way: &one_way,
+                    dead_ends: &dead_ends,
+                    branching: &branching,
+                    branching_density: &branching_density,
+                    tm,
+                },
+                &previous,
+                &mut current,
+                dens,
+                row,
+            );
             std::mem::swap(&mut previous, &mut current);
             if (frame + 1) % VITERBI_BLOCK_FRAMES == 0 || frame + 1 == num_frames {
                 let done = (frame % VITERBI_BLOCK_FRAMES) + 1;
@@ -826,6 +807,60 @@ struct OneWay {
     prev: usize,
     log_probability: f64,
     density: usize,
+}
+
+struct FrameModel<'a> {
+    one_way: &'a [OneWay],
+    dead_ends: &'a [usize],
+    branching: &'a [usize],
+    branching_density: &'a [usize],
+    tm: &'a TransitionModel,
+}
+
+/// One Viterbi frame. Kept out of line so WebAssembly engines see a function
+/// called once per frame and switch it to optimized code early; one long call
+/// would run the whole decode in V8's baseline tier (about 2x slower).
+#[inline(never)]
+fn viterbi_frame(
+    model: &FrameModel<'_>,
+    previous: &[f64],
+    current: &mut [f64],
+    dens: &[f64; 3],
+    row: &mut [u16],
+) {
+    let tm = model.tm;
+    for way in model.one_way {
+        let score = previous[way.prev] + way.log_probability + dens[way.density];
+        // As in the branching loop below: a NaN score loses to -inf.
+        current[way.state] = if score > f64::NEG_INFINITY {
+            score
+        } else {
+            f64::NEG_INFINITY
+        };
+    }
+    for &state in model.dead_ends {
+        current[state] = f64::NEG_INFINITY;
+    }
+    for (b, &state) in model.branching.iter().enumerate() {
+        let density = dens[model.branching_density[b]];
+        let start = tm.pointers[state];
+        let end = tm.pointers[state + 1];
+        let mut best = f64::NEG_INFINITY;
+        let mut best_idx = start;
+        for (offset, (&prev, &log_probability)) in tm.states[start..end]
+            .iter()
+            .zip(&tm.log_probabilities[start..end])
+            .enumerate()
+        {
+            let score = previous[prev] + log_probability + density;
+            if score > best {
+                best = score;
+                best_idx = start + offset;
+            }
+        }
+        current[state] = best;
+        row[b] = (best_idx - start) as u16;
+    }
 }
 
 fn allocate_choices(branching_states: usize, num_frames: usize) -> Result<Vec<u16>, RhythmError> {

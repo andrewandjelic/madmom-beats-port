@@ -354,7 +354,7 @@ fn lstm_forward(
     activation: Activation,
     progress: bool,
 ) -> Result<Array2<f32>, RhythmError> {
-    let [ig, fg, cg, og] = gates;
+    let ig = &gates[0];
 
     let size = data.len_of(Axis(0));
     let inputs = data.len_of(Axis(1));
@@ -403,38 +403,85 @@ fn lstm_forward(
         if progress && step > 0 && i % step == 0 {
             print_progress("lstm", i, size);
         }
-        input_sums.fill(0.0);
-        for (&x, weights) in data.row(i).iter().zip(input_weights.chunks_exact(width)) {
-            for (sum, &w) in input_sums.iter_mut().zip(weights) {
-                *sum = *sum + w * x;
-            }
-        }
-        recurrent_sums.fill(0.0);
-        for (&p, weights) in prev.iter().zip(recurrent_weights.chunks_exact(width)) {
-            for (sum, &w) in recurrent_sums.iter_mut().zip(weights) {
-                *sum = *sum + w * p;
-            }
-        }
-        // Input, forget and cell gates see the previous cell state; the cell
-        // gate has no peephole.
-        ig.activate_from_sums(&input_sums[..hidden], &recurrent_sums[..hidden], Some(&state), &mut gate_out[..hidden])?;
-        fg.activate_from_sums(&input_sums[hidden..2 * hidden], &recurrent_sums[hidden..2 * hidden], Some(&state), &mut gate_out[hidden..2 * hidden])?;
-        cg.activate_from_sums(&input_sums[2 * hidden..3 * hidden], &recurrent_sums[2 * hidden..3 * hidden], None, &mut gate_out[2 * hidden..3 * hidden])?;
-        for j in 0..hidden {
-            state[j] = gate_out[2 * hidden + j] * gate_out[j] + state[j] * gate_out[hidden + j];
-        }
-        // The output gate sees the updated cell state.
-        og.activate_from_sums(&input_sums[3 * hidden..], &recurrent_sums[3 * hidden..], Some(&state), &mut gate_out[3 * hidden..])?;
-        activated.copy_from_slice(&state);
-        apply_activation_row(&mut ArrayViewMut1::from(&mut activated[..]), activation)?;
         let mut out_row = out.row_mut(i);
-        for j in 0..hidden {
-            let v = activated[j] * gate_out[3 * hidden + j];
-            out_row[j] = v;
-            prev[j] = v;
-        }
+        lstm_frame(
+            gates,
+            activation,
+            data.row(i),
+            &input_weights,
+            &recurrent_weights,
+            &mut LstmBuffers {
+                prev: &mut prev,
+                state: &mut state,
+                input_sums: &mut input_sums,
+                recurrent_sums: &mut recurrent_sums,
+                gate_out: &mut gate_out,
+                activated: &mut activated,
+            },
+            out_row.as_slice_mut().expect("lstm output rows are contiguous"),
+        )?;
     }
     Ok(out)
+}
+
+struct LstmBuffers<'a> {
+    prev: &'a mut [f32],
+    state: &'a mut [f32],
+    input_sums: &'a mut [f32],
+    recurrent_sums: &'a mut [f32],
+    gate_out: &'a mut [f32],
+    activated: &'a mut [f32],
+}
+
+/// One LSTM frame. Kept out of line so WebAssembly engines see a function
+/// called once per frame and switch it to optimized code early; a network run
+/// alone in a worker would otherwise stay in V8's baseline tier.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn lstm_frame(
+    gates: &[Gate; 4],
+    activation: Activation,
+    x: ArrayView1<'_, f32>,
+    input_weights: &[f32],
+    recurrent_weights: &[f32],
+    buffers: &mut LstmBuffers<'_>,
+    out_row: &mut [f32],
+) -> Result<(), RhythmError> {
+    let [ig, fg, cg, og] = gates;
+    let hidden = buffers.prev.len();
+    let width = buffers.input_sums.len();
+    buffers.input_sums.fill(0.0);
+    for (&x, weights) in x.iter().zip(input_weights.chunks_exact(width)) {
+        for (sum, &w) in buffers.input_sums.iter_mut().zip(weights) {
+            *sum = *sum + w * x;
+        }
+    }
+    buffers.recurrent_sums.fill(0.0);
+    for (&p, weights) in buffers.prev.iter().zip(recurrent_weights.chunks_exact(width)) {
+        for (sum, &w) in buffers.recurrent_sums.iter_mut().zip(weights) {
+            *sum = *sum + w * p;
+        }
+    }
+    let (input_sums, recurrent_sums, gate_out) =
+        (&*buffers.input_sums, &*buffers.recurrent_sums, &mut *buffers.gate_out);
+    // Input, forget and cell gates see the previous cell state; the cell
+    // gate has no peephole.
+    ig.activate_from_sums(&input_sums[..hidden], &recurrent_sums[..hidden], Some(buffers.state), &mut gate_out[..hidden])?;
+    fg.activate_from_sums(&input_sums[hidden..2 * hidden], &recurrent_sums[hidden..2 * hidden], Some(buffers.state), &mut gate_out[hidden..2 * hidden])?;
+    cg.activate_from_sums(&input_sums[2 * hidden..3 * hidden], &recurrent_sums[2 * hidden..3 * hidden], None, &mut gate_out[2 * hidden..3 * hidden])?;
+    for j in 0..hidden {
+        buffers.state[j] = gate_out[2 * hidden + j] * gate_out[j] + buffers.state[j] * gate_out[hidden + j];
+    }
+    // The output gate sees the updated cell state.
+    og.activate_from_sums(&input_sums[3 * hidden..], &recurrent_sums[3 * hidden..], Some(buffers.state), &mut gate_out[3 * hidden..])?;
+    buffers.activated.copy_from_slice(buffers.state);
+    apply_activation_row(&mut ArrayViewMut1::from(&mut buffers.activated[..]), activation)?;
+    for j in 0..hidden {
+        let v = buffers.activated[j] * gate_out[3 * hidden + j];
+        out_row[j] = v;
+        buffers.prev[j] = v;
+    }
+    Ok(())
 }
 
 struct Gate {
