@@ -646,12 +646,16 @@ impl HiddenMarkovModel {
         Ok((path, best_log))
     }
 
+    /// Two-pass decoding with full backpointers for one block of frames at a
+    /// time: a separate implementation for tests to check `viterbi` against.
     #[cfg(test)]
     fn viterbi_reference(
         &self,
         observations: &[[f32; 2]],
         progress: &mut DbnProgressTracker<'_>,
     ) -> Result<(Vec<usize>, f64), RhythmError> {
+        const BLOCK_FRAMES: usize = 256;
+
         let num_states = self.transition_model.pointers.len() - 1;
         let num_frames = observations.len();
         if num_frames == 0 {
@@ -662,12 +666,12 @@ impl HiddenMarkovModel {
         let mut previous: Vec<f64> = self.initial_distribution.iter().map(|v| v.ln()).collect();
         let mut current = vec![f64::NEG_INFINITY; num_states];
 
-        let num_blocks = num_frames.div_ceil(VITERBI_PROGRESS_FRAMES);
+        let num_blocks = num_frames.div_ceil(BLOCK_FRAMES);
         let mut boundary_scores = Vec::with_capacity(num_blocks);
         for block_idx in 0..num_blocks {
             boundary_scores.push(previous.clone());
-            let start = block_idx * VITERBI_PROGRESS_FRAMES;
-            let end = (start + VITERBI_PROGRESS_FRAMES).min(num_frames);
+            let start = block_idx * BLOCK_FRAMES;
+            let end = (start + BLOCK_FRAMES).min(num_frames);
             for dens in &log_densities[start..end] {
                 self.run_viterbi_frame(&previous, &mut current, dens, None);
                 previous.clone_from_slice(&current);
@@ -693,8 +697,8 @@ impl HiddenMarkovModel {
         let mut end_state = best_state;
 
         for block_idx in (0..num_blocks).rev() {
-            let start = block_idx * VITERBI_PROGRESS_FRAMES;
-            let end = (start + VITERBI_PROGRESS_FRAMES).min(num_frames);
+            let start = block_idx * BLOCK_FRAMES;
+            let end = (start + BLOCK_FRAMES).min(num_frames);
             let block_len = end - start;
             let mut local_prev = boundary_scores[block_idx].clone();
             let mut local_curr = vec![f64::NEG_INFINITY; num_states];
