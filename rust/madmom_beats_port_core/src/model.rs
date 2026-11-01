@@ -114,7 +114,7 @@ fn run_inference_with_model(
     log_progress: bool,
     sink: &mut dyn ProgressSink,
 ) -> Result<ActivationOutput, RhythmError> {
-    let mut outputs = Vec::with_capacity(model.meta.networks.len());
+    let mut sum = None;
     let total = model.meta.networks.len().max(1) as f32;
     for (idx, network) in model.meta.networks.iter().enumerate() {
         if log_progress {
@@ -125,13 +125,14 @@ fn run_inference_with_model(
                 features.data.len_of(Axis(0))
             );
         }
-        outputs.push(run_network(network, model, &features.data, log_progress)?);
+        let out = run_network(network, model, &features.data, log_progress)?;
+        sum = Some(add_network_output(sum, out)?);
         sink.on_progress(ProgressEvent {
             stage: ProgressStage::Inference,
             progress: (idx as f32 + 1.0) / total,
         });
     }
-    average_network_outputs(outputs)
+    activations_from_sum(sum, model.meta.networks.len())
 }
 
 /// The networks' outputs (in network order) averaged into the activations
@@ -139,24 +140,37 @@ fn run_inference_with_model(
 pub(crate) fn average_network_outputs(
     outputs: Vec<Array2<f32>>,
 ) -> Result<ActivationOutput, RhythmError> {
-    let count = outputs.len() as f32;
-    let mut predictions: Option<Array2<f32>> = None;
+    let count = outputs.len();
+    let mut sum = None;
     for out in outputs {
-        predictions = Some(match predictions {
-            None => out,
-            Some(prev) => {
-                if prev.dim() != out.dim() {
-                    return Err(RhythmError::Model(
-                        "network output shape mismatch".to_string(),
-                    ));
-                }
-                &prev + &out
-            }
-        });
+        sum = Some(add_network_output(sum, out)?);
     }
+    activations_from_sum(sum, count)
+}
 
-    let mut averaged = predictions
-        .ok_or_else(|| RhythmError::Model("no networks in exported model".to_string()))?;
+fn add_network_output(
+    sum: Option<Array2<f32>>,
+    out: Array2<f32>,
+) -> Result<Array2<f32>, RhythmError> {
+    let Some(mut sum) = sum else {
+        return Ok(out);
+    };
+    if sum.dim() != out.dim() {
+        return Err(RhythmError::Model(
+            "network output shape mismatch".to_string(),
+        ));
+    }
+    sum += &out;
+    Ok(sum)
+}
+
+fn activations_from_sum(
+    sum: Option<Array2<f32>>,
+    count: usize,
+) -> Result<ActivationOutput, RhythmError> {
+    let mut averaged =
+        sum.ok_or_else(|| RhythmError::Model("no networks in exported model".to_string()))?;
+    let count = count as f32;
     averaged.mapv_inplace(|v| v / count);
 
     let output = if averaged.len_of(Axis(1)) == 3 {
@@ -685,7 +699,7 @@ fn print_progress(label: &str, current: usize, total: usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::{lstm_forward, Activation, Gate};
+    use super::{average_network_outputs, lstm_forward, Activation, Gate};
     use ndarray::{Array1, Array2, Axis};
 
     fn random(len: usize, seed: &mut u64) -> Vec<f32> {
@@ -753,6 +767,23 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn average_network_outputs_averages_and_drops_the_non_beat_column() {
+        let a = Array2::from_shape_vec((1, 3), vec![0.1, 0.2, 0.4]).unwrap();
+        let b = Array2::from_shape_vec((1, 3), vec![0.3, 0.4, 0.8]).unwrap();
+        let activations = average_network_outputs(vec![a, b]).unwrap();
+        assert_eq!(activations.beat, vec![(0.2f32 + 0.4) / 2.0]);
+        assert_eq!(activations.downbeat, vec![(0.4f32 + 0.8) / 2.0]);
+    }
+
+    #[test]
+    fn average_network_outputs_rejects_bad_inputs() {
+        assert!(average_network_outputs(Vec::new()).is_err());
+        let a = Array2::<f32>::zeros((2, 3));
+        let b = Array2::<f32>::zeros((3, 3));
+        assert!(average_network_outputs(vec![a, b]).is_err());
     }
 
     #[test]
