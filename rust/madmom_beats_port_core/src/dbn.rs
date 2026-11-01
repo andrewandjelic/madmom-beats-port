@@ -1122,8 +1122,7 @@ mod tests {
         assert_viterbi_matches_reference(&lambdas, &obs);
     }
 
-    /// Covers equal scores, where the first way in must win, and frames that
-    /// rule out most states, where scores reach -inf.
+    /// Frames that rule out most states, where scores reach -inf.
     #[test]
     fn viterbi_matches_reference_on_degenerate_observations() {
         let config = CoreConfig::default();
@@ -1157,6 +1156,36 @@ mod tests {
         ] {
             assert_viterbi_matches_reference(&config, &obs[..frames]);
         }
+    }
+
+    #[test]
+    fn viterbi_picks_the_first_way_in_among_equal_scores() {
+        let config = CoreConfig::default();
+        let observations = vec![[0.2f32, 0.1f32]; 300];
+        let mut sink = |_event: ProgressEvent| {};
+        for mut hmm in build_hmms(&config).unwrap() {
+            hmm.transition_model.log_probabilities.fill(0.0);
+            let mut tracker = DbnProgressTracker::new(&mut sink, usize::MAX);
+            let (path, _) = hmm.viterbi(&observations, &mut tracker).unwrap();
+            let (ref_path, _) = hmm.viterbi_reference(&observations, &mut tracker).unwrap();
+            assert_eq!(path, ref_path);
+        }
+    }
+
+    #[test]
+    fn decode_scored_returns_none_when_no_bar_length_fits() {
+        // Probabilities summing past 1 rule out every non-beat state.
+        let frames = 300;
+        let activations = ActivationOutput {
+            beat: vec![0.7; frames],
+            downbeat: vec![0.7; frames],
+        };
+        let config = CoreConfig::default();
+        let mut sink = |_event: ProgressEvent| {};
+        assert!(decode_scored(&activations, &config, &mut sink)
+            .unwrap()
+            .is_none());
+        assert!(decode(&activations, &config, &mut sink).is_err());
     }
 
     #[test]
