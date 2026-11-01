@@ -66,15 +66,7 @@ pub fn analyze_with_progress(
     config: &CoreConfig,
     progress: Option<&mut dyn ProgressSink>,
 ) -> Result<AnalysisOutput, RhythmError> {
-    if let Err(issue) = validate_core_config(config) {
-        return Err(RhythmError::InvalidInput(format!("config {}", issue)));
-    }
-    if sample_rate != config.feature.sample_rate {
-        return Err(RhythmError::InvalidInput(format!(
-            "expected {} Hz mono samples; got {}",
-            config.feature.sample_rate, sample_rate
-        )));
-    }
+    validate_input(sample_rate, config)?;
 
     let mut noop = NoopProgressSink;
     let sink: &mut dyn ProgressSink = match progress {
@@ -107,15 +99,7 @@ pub fn analyze_with_progress_and_model_data(
     model_json: &str,
     weights_npz: &[u8],
 ) -> Result<AnalysisOutput, RhythmError> {
-    if let Err(issue) = validate_core_config(config) {
-        return Err(RhythmError::InvalidInput(format!("config {}", issue)));
-    }
-    if sample_rate != config.feature.sample_rate {
-        return Err(RhythmError::InvalidInput(format!(
-            "expected {} Hz mono samples; got {}",
-            config.feature.sample_rate, sample_rate
-        )));
-    }
+    validate_input(sample_rate, config)?;
 
     let mut noop = NoopProgressSink;
     let sink: &mut dyn ProgressSink = match progress {
@@ -158,13 +142,7 @@ pub fn extract_features(
     sample_rate: u32,
     config: &CoreConfig,
 ) -> Result<ndarray::Array2<f32>, RhythmError> {
-    validate_config(config)?;
-    if sample_rate != config.feature.sample_rate {
-        return Err(RhythmError::InvalidInput(format!(
-            "expected {} Hz mono samples; got {}",
-            config.feature.sample_rate, sample_rate
-        )));
-    }
+    validate_input(sample_rate, config)?;
     let mut noop = NoopProgressSink;
     features::compute_features(samples, config, &mut noop)
         .map(|f| f.data)
@@ -199,6 +177,17 @@ pub fn decode_network_outputs(
 fn validate_config(config: &CoreConfig) -> Result<(), RhythmError> {
     validate_core_config(config)
         .map_err(|issue| RhythmError::InvalidInput(format!("config {}", issue)))
+}
+
+fn validate_input(sample_rate: u32, config: &CoreConfig) -> Result<(), RhythmError> {
+    validate_config(config)?;
+    if sample_rate != config.feature.sample_rate {
+        return Err(RhythmError::InvalidInput(format!(
+            "expected {} Hz mono samples; got {}",
+            config.feature.sample_rate, sample_rate
+        )));
+    }
+    Ok(())
 }
 
 fn build_analysis_output(beats: Vec<BeatEvent>, fps: f32) -> Result<AnalysisOutput, RhythmError> {
