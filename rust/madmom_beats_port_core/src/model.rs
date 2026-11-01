@@ -394,9 +394,9 @@ fn lstm_forward(
     // All four gates' weights side by side, one row per input: a frame's
     // input (and recurrent) products then accumulate for every unit in one
     // pass over contiguous memory, with many independent sums in flight
-    // instead of one long dependency chain. Each unit still sums its products
-    // from input 0 upwards, starting at zero, exactly like ndarray's strided
-    // dot product in Gate::activate_into, so the results are bit-identical.
+    // instead of one long dependency chain. Each unit sums its products from
+    // input 0 upwards, starting at zero: float addition isn't associative, so
+    // another order would change the results.
     let width = 4 * hidden;
     let mut input_weights = vec![0.0f32; inputs * width];
     let mut recurrent_weights = vec![0.0f32; hidden * width];
@@ -462,7 +462,6 @@ struct LstmBuffers<'a> {
 /// called once per frame and switch it to optimized code early; a network run
 /// alone in a worker would otherwise stay in V8's baseline tier.
 #[inline(never)]
-#[allow(clippy::too_many_arguments)]
 fn lstm_frame(
     gates: &[Gate; 4],
     activation: Activation,
@@ -589,9 +588,9 @@ impl Gate {
         Ok(())
     }
 
-    /// Same arithmetic as `activate_into`, from the input and recurrent dot
-    /// products already summed: bias, plus inputs, plus recurrent, plus
-    /// peephole, then the activation.
+    /// Finishes a gate from its input and recurrent dot products, already
+    /// summed: bias, plus inputs, plus recurrent, plus peephole, then the
+    /// activation.
     fn activate_from_sums(
         &self,
         input_sums: &[f32],
@@ -731,7 +730,7 @@ mod tests {
         }
     }
 
-    /// The previous per-gate, per-frame implementation.
+    /// A per-gate, per-frame LSTM to check `lstm_forward` against.
     fn lstm_reference(
         data: &Array2<f32>,
         gates: &[Gate; 4],

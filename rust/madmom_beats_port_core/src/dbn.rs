@@ -5,7 +5,8 @@ use crate::types::{ActivationOutput, BeatEvent, ProgressEvent, ProgressSink, Pro
 use crate::{CoreConfig, RhythmError};
 use std::mem::size_of;
 
-const VITERBI_BLOCK_FRAMES: usize = 256;
+/// Frames between DBN progress updates.
+const VITERBI_PROGRESS_FRAMES: usize = 256;
 const DBN_PROGRESS_MIN_DELTA: f32 = 0.02;
 const DBN_PROGRESS_WORK_PORTION: f32 = 0.98;
 
@@ -529,7 +530,7 @@ impl HiddenMarkovModel {
 
     fn work_units(&self, num_frames: usize) -> usize {
         let num_states = self.transition_model.pointers.len().saturating_sub(1);
-        num_frames.saturating_mul(num_states).saturating_mul(2)
+        num_frames.saturating_mul(num_states)
     }
 
     /// Viterbi decoding in a single forward pass.
@@ -537,11 +538,8 @@ impl HiddenMarkovModel {
     /// Most states have exactly one way in (the previous position within the
     /// beat); only a beat's first states, where the tempo may change, have
     /// several. So the pass only records which way in won for those few
-    /// states, a few hundred per frame, instead of a backpointer for every
-    /// state. The previous version kept full backpointers for one block at a
-    /// time and so ran every frame twice. Scores, tie-breaking (the first best
-    /// way in wins) and the decoded path are identical to it; see
-    /// `viterbi_reference` and the tests.
+    /// states, a few hundred per frame, rather than a backpointer for every
+    /// state. Among equal scores, the first way in wins.
     fn viterbi(
         &self,
         observations: &[[f32; 2]],
@@ -609,9 +607,9 @@ impl HiddenMarkovModel {
                 row,
             );
             std::mem::swap(&mut previous, &mut current);
-            if (frame + 1) % VITERBI_BLOCK_FRAMES == 0 || frame + 1 == num_frames {
-                let done = (frame % VITERBI_BLOCK_FRAMES) + 1;
-                progress.advance(done.saturating_mul(num_states).saturating_mul(2));
+            if (frame + 1) % VITERBI_PROGRESS_FRAMES == 0 || frame + 1 == num_frames {
+                let done = (frame % VITERBI_PROGRESS_FRAMES) + 1;
+                progress.advance(done.saturating_mul(num_states));
             }
         }
 
@@ -664,12 +662,12 @@ impl HiddenMarkovModel {
         let mut previous: Vec<f64> = self.initial_distribution.iter().map(|v| v.ln()).collect();
         let mut current = vec![f64::NEG_INFINITY; num_states];
 
-        let num_blocks = num_frames.div_ceil(VITERBI_BLOCK_FRAMES);
+        let num_blocks = num_frames.div_ceil(VITERBI_PROGRESS_FRAMES);
         let mut boundary_scores = Vec::with_capacity(num_blocks);
         for block_idx in 0..num_blocks {
             boundary_scores.push(previous.clone());
-            let start = block_idx * VITERBI_BLOCK_FRAMES;
-            let end = (start + VITERBI_BLOCK_FRAMES).min(num_frames);
+            let start = block_idx * VITERBI_PROGRESS_FRAMES;
+            let end = (start + VITERBI_PROGRESS_FRAMES).min(num_frames);
             for dens in &log_densities[start..end] {
                 self.run_viterbi_frame(&previous, &mut current, dens, None);
                 previous.clone_from_slice(&current);
@@ -695,8 +693,8 @@ impl HiddenMarkovModel {
         let mut end_state = best_state;
 
         for block_idx in (0..num_blocks).rev() {
-            let start = block_idx * VITERBI_BLOCK_FRAMES;
-            let end = (start + VITERBI_BLOCK_FRAMES).min(num_frames);
+            let start = block_idx * VITERBI_PROGRESS_FRAMES;
+            let end = (start + VITERBI_PROGRESS_FRAMES).min(num_frames);
             let block_len = end - start;
             let mut local_prev = boundary_scores[block_idx].clone();
             let mut local_curr = vec![f64::NEG_INFINITY; num_states];
