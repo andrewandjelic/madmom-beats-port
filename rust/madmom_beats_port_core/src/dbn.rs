@@ -1014,7 +1014,7 @@ fn logspace_intervals(min_interval: f32, max_interval: f32, count: usize) -> Vec
 
 #[cfg(test)]
 mod tests {
-    use super::{build_hmms, decode, decode_scored, DbnProgressTracker};
+    use super::{build_hmms, decode, decode_scored, DbnProgressTracker, VITERBI_PROGRESS_FRAMES};
     use crate::types::{ActivationOutput, ProgressEvent, ProgressSink, ProgressStage};
     use crate::CoreConfig;
 
@@ -1075,6 +1075,100 @@ mod tests {
                     "log probability differs"
                 );
             }
+        }
+    }
+
+    fn assert_viterbi_matches_reference(config: &CoreConfig, observations: &[[f32; 2]]) {
+        let mut sink = |_event: ProgressEvent| {};
+        for hmm in build_hmms(config).unwrap() {
+            let mut tracker = DbnProgressTracker::new(&mut sink, usize::MAX);
+            let (path, logp) = hmm.viterbi(observations, &mut tracker).unwrap();
+            let (ref_path, ref_logp) = hmm.viterbi_reference(observations, &mut tracker).unwrap();
+            assert_eq!(path, ref_path, "path differs");
+            assert_eq!(
+                logp.to_bits(),
+                ref_logp.to_bits(),
+                "log probability differs"
+            );
+        }
+    }
+
+    fn observations(activations: &ActivationOutput) -> Vec<[f32; 2]> {
+        activations
+            .beat
+            .iter()
+            .zip(activations.downbeat.iter())
+            .map(|(b, d)| [*b, *d])
+            .collect()
+    }
+
+    #[test]
+    fn viterbi_matches_reference_for_other_configs() {
+        let obs = observations(&synthetic_activations(500, 11));
+
+        let mut bar_lengths = CoreConfig::default();
+        bar_lengths.dbn.beats_per_bar = vec![2, 5, 7];
+        assert_viterbi_matches_reference(&bar_lengths, &obs);
+
+        let mut wide_tempi = CoreConfig::default();
+        wide_tempi.dbn.min_bpm = 30.0;
+        wide_tempi.dbn.max_bpm = 300.0;
+        wide_tempi.dbn.num_tempi = 120;
+        assert_viterbi_matches_reference(&wide_tempi, &obs);
+
+        let mut lambdas = CoreConfig::default();
+        lambdas.dbn.transition_lambda = 1.0;
+        lambdas.dbn.observation_lambda = 4;
+        assert_viterbi_matches_reference(&lambdas, &obs);
+    }
+
+    /// Covers equal scores, where the first way in must win, and frames that
+    /// rule out most states, where scores reach -inf.
+    #[test]
+    fn viterbi_matches_reference_on_degenerate_observations() {
+        let config = CoreConfig::default();
+        let cases: Vec<Vec<[f32; 2]>> = vec![
+            vec![[0.0, 0.0]; 300],
+            vec![[0.5, 0.0]; 300],
+            vec![[1.0, 0.0]; 300],
+            vec![[0.7, 0.7]; 300],
+            (0..300)
+                .map(|i| if i % 7 == 0 { [1.0, 0.0] } else { [0.1, 0.1] })
+                .collect(),
+            (0..300)
+                .map(|i| if i < 20 { [0.0, 1.0] } else { [0.2, 0.1] })
+                .collect(),
+        ];
+        for case in &cases {
+            assert_viterbi_matches_reference(&config, case);
+        }
+    }
+
+    #[test]
+    fn viterbi_matches_reference_around_progress_boundaries() {
+        let config = CoreConfig::default();
+        let obs = observations(&synthetic_activations(520, 5));
+        for frames in [
+            1,
+            VITERBI_PROGRESS_FRAMES - 1,
+            VITERBI_PROGRESS_FRAMES,
+            VITERBI_PROGRESS_FRAMES + 1,
+            2 * VITERBI_PROGRESS_FRAMES,
+        ] {
+            assert_viterbi_matches_reference(&config, &obs[..frames]);
+        }
+    }
+
+    #[test]
+    fn viterbi_reports_exactly_its_work_units() {
+        let config = CoreConfig::default();
+        let obs = observations(&synthetic_activations(1_000, 3));
+        let mut sink = |_event: ProgressEvent| {};
+        for hmm in build_hmms(&config).unwrap() {
+            let total = hmm.work_units(obs.len());
+            let mut tracker = DbnProgressTracker::new(&mut sink, usize::MAX);
+            hmm.viterbi(&obs, &mut tracker).unwrap();
+            assert_eq!(tracker.completed_work, total as f64);
         }
     }
 

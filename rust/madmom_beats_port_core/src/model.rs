@@ -788,12 +788,17 @@ mod tests {
     #[test]
     fn lstm_matches_reference_bit_for_bit() {
         let mut seed = 7u64;
-        for &(inputs, hidden) in &[(314usize, 25usize), (50, 25), (3, 1)] {
+        for &(inputs, hidden, peephole) in &[
+            (314usize, 25usize, true),
+            (50, 25, true),
+            (3, 1, true),
+            (50, 25, false),
+        ] {
             let gates = [
-                gate(inputs, hidden, true, Activation::Sigmoid, &mut seed),
-                gate(inputs, hidden, true, Activation::Sigmoid, &mut seed),
-                gate(inputs, hidden, true, Activation::Tanh, &mut seed),
-                gate(inputs, hidden, true, Activation::Sigmoid, &mut seed),
+                gate(inputs, hidden, peephole, Activation::Sigmoid, &mut seed),
+                gate(inputs, hidden, peephole, Activation::Sigmoid, &mut seed),
+                gate(inputs, hidden, peephole, Activation::Tanh, &mut seed),
+                gate(inputs, hidden, peephole, Activation::Sigmoid, &mut seed),
             ];
             let frames = 300;
             let mut data =

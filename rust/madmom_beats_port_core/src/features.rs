@@ -447,3 +447,66 @@ fn build_log_filterbank(
     }
     Ok(fb)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        band_weights, bin_frequencies, build_log_filterbank, compute_features, feature_dim,
+    };
+    use crate::{CoreConfig, ProgressEvent};
+    use ndarray::{Array2, Axis};
+
+    fn default_filterbanks() -> Vec<Array2<f32>> {
+        let feature = CoreConfig::default().feature;
+        feature
+            .frame_sizes
+            .iter()
+            .zip(feature.num_bands.iter())
+            .map(|(&frame_size, &num_bands)| {
+                let bin_freqs = bin_frequencies(feature.sample_rate, frame_size, frame_size / 2);
+                build_log_filterbank(
+                    &bin_freqs,
+                    num_bands,
+                    feature.fmin,
+                    feature.fmax,
+                    true,
+                    true,
+                )
+                .unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn band_weights_keep_every_non_zero_weight() {
+        for filterbank in default_filterbanks() {
+            let bands = band_weights(&filterbank);
+            assert_eq!(bands.len(), filterbank.len_of(Axis(1)));
+            for (band, (first, weights)) in bands.iter().enumerate() {
+                for (bin, &dense) in filterbank.column(band).iter().enumerate() {
+                    let sparse = bin
+                        .checked_sub(*first)
+                        .and_then(|offset| weights.get(offset))
+                        .copied()
+                        .unwrap_or(0.0);
+                    assert_eq!(dense.to_bits(), sparse.to_bits(), "band {band} bin {bin}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn band_weights_treat_an_all_zero_band_as_empty() {
+        let bands = band_weights(&Array2::<f32>::zeros((4, 1)));
+        assert_eq!(bands, vec![(0, Vec::new())]);
+    }
+
+    #[test]
+    fn feature_dim_matches_computed_features() {
+        let config = CoreConfig::default();
+        let samples = vec![0.25f32; 44_100];
+        let mut sink = |_event: ProgressEvent| {};
+        let features = compute_features(&samples, &config, &mut sink).unwrap();
+        assert_eq!(features.data.len_of(Axis(1)), feature_dim(&config).unwrap());
+    }
+}
