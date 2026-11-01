@@ -12,8 +12,8 @@ mod types;
 pub use config::{
     validate_core_config, ConfigValidationIssue, CoreConfig, DbnConfig, FeatureConfig, ModelConfig,
 };
-use types::BeatEvent;
 pub use model::BeatModel;
+use types::BeatEvent;
 pub use types::{AnalysisOutput, ProgressEvent, ProgressSink, ProgressStage};
 
 use thiserror::Error;
@@ -188,7 +188,10 @@ pub fn decode_network_outputs(
     let activations =
         model::average_network_outputs(outputs).map_err(|e| with_stage_error("inference", e))?;
     match dbn::decode_scored(&activations, config, sink).map_err(|e| with_stage_error("dbn", e))? {
-        Some((beats, logp)) => Ok(Some((build_analysis_output(beats, config.feature.fps)?, logp))),
+        Some((beats, logp)) => Ok(Some((
+            build_analysis_output(beats, config.feature.fps)?,
+            logp,
+        ))),
         None => Ok(None),
     }
 }

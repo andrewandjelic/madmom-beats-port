@@ -562,7 +562,9 @@ impl HiddenMarkovModel {
         for (i, &state) in branching.iter().enumerate() {
             slot[state] = i;
             if incoming(state).len() > u16::MAX as usize + 1 {
-                return Err(RhythmError::Model("too many transitions into one state".to_string()));
+                return Err(RhythmError::Model(
+                    "too many transitions into one state".to_string(),
+                ));
             }
         }
         let mut choices = allocate_choices(branching.len(), num_frames)?;
@@ -1016,9 +1018,13 @@ mod tests {
 
     /// Beat-like activations with jittered tempo, dropouts and noise.
     fn synthetic_activations(frames: usize, seed: u64) -> ActivationOutput {
-        let mut rng = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let mut rng = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let mut next = move || {
-            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((rng >> 33) as f32) / ((1u64 << 31) as f32)
         };
         let mut beat = vec![0.0f32; frames];
@@ -1061,7 +1067,11 @@ mod tests {
                 let (path, logp) = hmm.viterbi(&obs, &mut tracker).unwrap();
                 let (ref_path, ref_logp) = hmm.viterbi_reference(&obs, &mut tracker).unwrap();
                 assert_eq!(path, ref_path, "path differs (seed {seed})");
-                assert_eq!(logp.to_bits(), ref_logp.to_bits(), "log probability differs");
+                assert_eq!(
+                    logp.to_bits(),
+                    ref_logp.to_bits(),
+                    "log probability differs"
+                );
             }
         }
     }
@@ -1078,7 +1088,10 @@ mod tests {
                 let mut single = config.clone();
                 single.dbn.beats_per_bar = vec![beats];
                 if let Some((events, logp)) = decode_scored(&act, &single, &mut sink).unwrap() {
-                    if best.as_ref().map_or(true, |(_, best_logp)| logp > *best_logp) {
+                    if best
+                        .as_ref()
+                        .map_or(true, |(_, best_logp)| logp > *best_logp)
+                    {
                         best = Some((events, logp));
                     }
                 }

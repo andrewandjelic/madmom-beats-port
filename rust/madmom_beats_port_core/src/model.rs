@@ -146,7 +146,9 @@ pub(crate) fn average_network_outputs(
             None => out,
             Some(prev) => {
                 if prev.dim() != out.dim() {
-                    return Err(RhythmError::Model("network output shape mismatch".to_string()));
+                    return Err(RhythmError::Model(
+                        "network output shape mismatch".to_string(),
+                    ));
                 }
                 &prev + &out
             }
@@ -199,10 +201,17 @@ impl BeatModel {
     }
 
     /// Runs network `index` over features shaped frames x feature columns.
-    pub fn run_network(&self, features: &Array2<f32>, index: usize) -> Result<Array2<f32>, RhythmError> {
-        let network = self.model.meta.networks.get(index).ok_or_else(|| {
-            RhythmError::InvalidInput(format!("no network {}", index))
-        })?;
+    pub fn run_network(
+        &self,
+        features: &Array2<f32>,
+        index: usize,
+    ) -> Result<Array2<f32>, RhythmError> {
+        let network = self
+            .model
+            .meta
+            .networks
+            .get(index)
+            .ok_or_else(|| RhythmError::InvalidInput(format!("no network {}", index)))?;
         run_network(network, &self.model, features, false)
     }
 }
@@ -418,7 +427,9 @@ fn lstm_forward(
                 gate_out: &mut gate_out,
                 activated: &mut activated,
             },
-            out_row.as_slice_mut().expect("lstm output rows are contiguous"),
+            out_row
+                .as_slice_mut()
+                .expect("lstm output rows are contiguous"),
         )?;
     }
     Ok(out)
@@ -457,25 +468,56 @@ fn lstm_frame(
         }
     }
     buffers.recurrent_sums.fill(0.0);
-    for (&p, weights) in buffers.prev.iter().zip(recurrent_weights.chunks_exact(width)) {
+    for (&p, weights) in buffers
+        .prev
+        .iter()
+        .zip(recurrent_weights.chunks_exact(width))
+    {
         for (sum, &w) in buffers.recurrent_sums.iter_mut().zip(weights) {
             *sum = *sum + w * p;
         }
     }
-    let (input_sums, recurrent_sums, gate_out) =
-        (&*buffers.input_sums, &*buffers.recurrent_sums, &mut *buffers.gate_out);
+    let (input_sums, recurrent_sums, gate_out) = (
+        &*buffers.input_sums,
+        &*buffers.recurrent_sums,
+        &mut *buffers.gate_out,
+    );
     // Input, forget and cell gates see the previous cell state; the cell
     // gate has no peephole.
-    ig.activate_from_sums(&input_sums[..hidden], &recurrent_sums[..hidden], Some(buffers.state), &mut gate_out[..hidden])?;
-    fg.activate_from_sums(&input_sums[hidden..2 * hidden], &recurrent_sums[hidden..2 * hidden], Some(buffers.state), &mut gate_out[hidden..2 * hidden])?;
-    cg.activate_from_sums(&input_sums[2 * hidden..3 * hidden], &recurrent_sums[2 * hidden..3 * hidden], None, &mut gate_out[2 * hidden..3 * hidden])?;
+    ig.activate_from_sums(
+        &input_sums[..hidden],
+        &recurrent_sums[..hidden],
+        Some(buffers.state),
+        &mut gate_out[..hidden],
+    )?;
+    fg.activate_from_sums(
+        &input_sums[hidden..2 * hidden],
+        &recurrent_sums[hidden..2 * hidden],
+        Some(buffers.state),
+        &mut gate_out[hidden..2 * hidden],
+    )?;
+    cg.activate_from_sums(
+        &input_sums[2 * hidden..3 * hidden],
+        &recurrent_sums[2 * hidden..3 * hidden],
+        None,
+        &mut gate_out[2 * hidden..3 * hidden],
+    )?;
     for j in 0..hidden {
-        buffers.state[j] = gate_out[2 * hidden + j] * gate_out[j] + buffers.state[j] * gate_out[hidden + j];
+        buffers.state[j] =
+            gate_out[2 * hidden + j] * gate_out[j] + buffers.state[j] * gate_out[hidden + j];
     }
     // The output gate sees the updated cell state.
-    og.activate_from_sums(&input_sums[3 * hidden..], &recurrent_sums[3 * hidden..], Some(buffers.state), &mut gate_out[3 * hidden..])?;
+    og.activate_from_sums(
+        &input_sums[3 * hidden..],
+        &recurrent_sums[3 * hidden..],
+        Some(buffers.state),
+        &mut gate_out[3 * hidden..],
+    )?;
     buffers.activated.copy_from_slice(buffers.state);
-    apply_activation_row(&mut ArrayViewMut1::from(&mut buffers.activated[..]), activation)?;
+    apply_activation_row(
+        &mut ArrayViewMut1::from(&mut buffers.activated[..]),
+        activation,
+    )?;
     for j in 0..hidden {
         let v = buffers.activated[j] * gate_out[3 * hidden + j];
         out_row[j] = v;
@@ -649,24 +691,38 @@ mod tests {
     fn random(len: usize, seed: &mut u64) -> Vec<f32> {
         (0..len)
             .map(|_| {
-                *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                *seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 ((*seed >> 33) as f32) / ((1u64 << 31) as f32) - 0.5
             })
             .collect()
     }
 
-    fn gate(inputs: usize, hidden: usize, peephole: bool, activation: Activation, seed: &mut u64) -> Gate {
+    fn gate(
+        inputs: usize,
+        hidden: usize,
+        peephole: bool,
+        activation: Activation,
+        seed: &mut u64,
+    ) -> Gate {
         Gate {
-            weights: Array2::from_shape_vec((inputs, hidden), random(inputs * hidden, seed)).unwrap(),
+            weights: Array2::from_shape_vec((inputs, hidden), random(inputs * hidden, seed))
+                .unwrap(),
             bias: Array1::from(random(hidden, seed)),
-            recurrent: Array2::from_shape_vec((hidden, hidden), random(hidden * hidden, seed)).unwrap(),
+            recurrent: Array2::from_shape_vec((hidden, hidden), random(hidden * hidden, seed))
+                .unwrap(),
             peephole: peephole.then(|| Array1::from(random(hidden, seed))),
             activation,
         }
     }
 
     /// The previous per-gate, per-frame implementation.
-    fn lstm_reference(data: &Array2<f32>, gates: &[Gate; 4], activation: Activation) -> Array2<f32> {
+    fn lstm_reference(
+        data: &Array2<f32>,
+        gates: &[Gate; 4],
+        activation: Activation,
+    ) -> Array2<f32> {
         let [ig, fg, cg, og] = gates;
         let hidden = ig.bias.len();
         let mut out = Array2::<f32>::zeros((data.len_of(Axis(0)), hidden));
@@ -678,13 +734,16 @@ mod tests {
         let mut og_out = Array1::<f32>::zeros(hidden);
         for i in 0..data.len_of(Axis(0)) {
             let x = data.row(i);
-            ig.activate_into(x, &prev, Some(&state), &mut ig_out).unwrap();
-            fg.activate_into(x, &prev, Some(&state), &mut fg_out).unwrap();
+            ig.activate_into(x, &prev, Some(&state), &mut ig_out)
+                .unwrap();
+            fg.activate_into(x, &prev, Some(&state), &mut fg_out)
+                .unwrap();
             cg.activate_into(x, &prev, None, &mut cell_out).unwrap();
             for j in 0..hidden {
                 state[j] = cell_out[j] * ig_out[j] + state[j] * fg_out[j];
             }
-            og.activate_into(x, &prev, Some(&state), &mut og_out).unwrap();
+            og.activate_into(x, &prev, Some(&state), &mut og_out)
+                .unwrap();
             let mut activated = state.clone();
             super::apply_activation_row_owned(&mut activated, activation).unwrap();
             for j in 0..hidden {
@@ -707,15 +766,23 @@ mod tests {
                 gate(inputs, hidden, true, Activation::Sigmoid, &mut seed),
             ];
             let frames = 300;
-            let mut data = Array2::from_shape_vec((frames, inputs), random(frames * inputs, &mut seed)).unwrap();
+            let mut data =
+                Array2::from_shape_vec((frames, inputs), random(frames * inputs, &mut seed))
+                    .unwrap();
             let expected = lstm_reference(&data, &gates, Activation::Tanh);
             let actual = lstm_forward(&data, &gates, Activation::Tanh, false).unwrap();
-            assert!(expected.iter().zip(actual.iter()).all(|(a, b)| a.to_bits() == b.to_bits()));
+            assert!(expected
+                .iter()
+                .zip(actual.iter())
+                .all(|(a, b)| a.to_bits() == b.to_bits()));
             // Bidirectional layers feed time-reversed views.
             data.invert_axis(Axis(0));
             let expected = lstm_reference(&data, &gates, Activation::Tanh);
             let actual = lstm_forward(&data, &gates, Activation::Tanh, false).unwrap();
-            assert!(expected.iter().zip(actual.iter()).all(|(a, b)| a.to_bits() == b.to_bits()));
+            assert!(expected
+                .iter()
+                .zip(actual.iter())
+                .all(|(a, b)| a.to_bits() == b.to_bits()));
         }
     }
 }

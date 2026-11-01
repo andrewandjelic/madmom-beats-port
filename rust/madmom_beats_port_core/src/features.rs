@@ -33,7 +33,9 @@ fn band_weights(filterbank: &Array2<f32>) -> Vec<(usize, Vec<f32>)> {
             let first = column.iter().position(|&w| w != 0.0);
             let last = column.iter().rposition(|&w| w != 0.0);
             match (first, last) {
-                (Some(first), Some(last)) => (first, column.slice(ndarray::s![first..=last]).to_vec()),
+                (Some(first), Some(last)) => {
+                    (first, column.slice(ndarray::s![first..=last]).to_vec())
+                }
                 _ => (0, Vec::new()),
             }
         })
@@ -206,7 +208,14 @@ fn feature_frame(
     let frame_size = plan.frame_size;
     let num_filters = plan.num_filters;
     let history_rows = plan.diff_frames.max(1);
-    write_windowed_frame(samples, frame_idx, hop_size, frame_size, &plan.window, buffers.fft);
+    write_windowed_frame(
+        samples,
+        frame_idx,
+        hop_size,
+        frame_size,
+        &plan.window,
+        buffers.fft,
+    );
 
     fft.process(buffers.fft);
     for (magnitude, value) in buffers.magnitude.iter_mut().zip(buffers.fft.iter()) {

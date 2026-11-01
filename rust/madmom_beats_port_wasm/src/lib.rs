@@ -183,13 +183,17 @@ impl BeatNetworks {
             return Err(js_error("features do not divide into the column count"));
         }
         let frames = features.len() / columns;
-        self.features = Some(Array2::from_shape_vec((frames, columns), features).map_err(js_error)?);
+        self.features =
+            Some(Array2::from_shape_vec((frames, columns), features).map_err(js_error)?);
         Ok(())
     }
 
     /// Network `index`'s output, frames x outputs in row order.
     pub fn run(&self, index: usize) -> Result<Vec<f32>, JsValue> {
-        let features = self.features.as_ref().ok_or_else(|| js_error("set_features first"))?;
+        let features = self
+            .features
+            .as_ref()
+            .ok_or_else(|| js_error("set_features first"))?;
         let out = self.model.run_network(features, index).map_err(js_error)?;
         Ok(out.as_standard_layout().into_owned().into_raw_vec())
     }
@@ -214,7 +218,9 @@ pub fn decode_beats(
 ) -> Result<JsValue, JsValue> {
     let config = parse_config(config_json).map_err(as_js_error)?;
     if networks == 0 || columns == 0 || outputs.len() % (networks * columns) != 0 {
-        return Err(js_error("network outputs do not match the network and column counts"));
+        return Err(js_error(
+            "network outputs do not match the network and column counts",
+        ));
     }
     let frames = outputs.len() / (networks * columns);
     let arrays = outputs
